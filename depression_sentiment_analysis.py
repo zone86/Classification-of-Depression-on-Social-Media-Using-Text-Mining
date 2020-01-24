@@ -8,19 +8,28 @@ Created on the day we all start to love our self.
 
 import json
 import pandas as pd
-import time
+#import time
 import numpy as np
 import re
+from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-import itertools
-import matplotlib.pyplot as plt 
-#from sklearn.metrics import confusion_matrix
+import functools
+import pdb
+import csv
+
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
+
 #from sklearn.metrics import roc_auc_score
+#import matplotlib.pyplot as plt 
+#from sklearn.metrics import confusion_matrix
 
+import fallacies
 
+all_fallacies = fallacies.all_fallacies
+
+lemmatizer = WordNetLemmatizer()
 
 def retrieveTweet(data_url):
 
@@ -40,6 +49,86 @@ def retrieveProcessedData(Pdata_url):
             x.append(tweets_data[i]['text'])
             y.append(sent['sentiment'][i])
             
+# function to clean text. models perform better with stop words set to false
+def clean_text(text, remove_stopwords = False, replace_contractions = True):
+    
+    # convert to lower case
+    text = text.lower()
+    
+    lemmatized = []
+    for word in text:
+        lemmatized.append(lemmatizer.lemmatize(word))
+    
+    
+    # Replace contractions with their longer forms 
+    if replace_contractions:
+        text = text.split()
+        new_text = []
+        for word in text:
+            if word in contractions:
+                new_text.append(contractions[word])
+            else:
+                new_text.append(word)
+        text = " ".join(new_text)
+        
+        text = text.split()
+        new_text_2 = []
+        for word_2 in text:
+            if word_2 in contractions_2:
+                new_text_2.append(contractions_2[word_2])
+            else:
+                new_text_2.append(word_2)
+        text = " ".join(new_text_2)
+    
+    
+    # Format words and remove unwanted characters
+    text = re.sub('(http\S+)|(https\S+)', '', text) # remove URLs
+    text = re.sub(r'@[^\s]+', '', text) # remove re-tweets
+    
+    if text.startswith('rt '): # remove re-tweets
+        text = text[len('rt ')+1:]
+    
+    text = re.sub(r'#([^\s]+)', r'\1', text) # remove hashtags
+    text = re.sub(r'[_"\-;%()|+&=*%:]', '', text) # remove characters
+    
+    # Custom removals
+    text = re.sub(r' ppl', ' people', text)
+    text = re.sub(r' ur', ' you are', text)
+    #text = re.sub(r' w ', ' with ', text)
+    text = re.sub(r' rn', ' right now', text)
+    text = re.sub(r' cos', ' because', text)
+    text = re.sub(r' dunno', ' don\'t know', text)
+    text = re.sub(r' gonna', ' going to', text)
+    text = re.sub(r' tho', ' although', text)
+    
+    
+    return text
+# =============================================================================
+#     text = re.sub(r'&amp;', '', text) 
+#     text = re.sub(r'0,0', '00', text) 
+#     text = re.sub(r'\'', ' ', text)
+#     text = re.sub(r'\$', ' $ ', text)
+#     text = re.sub(r'u s ', ' united states ', text)
+#     text = re.sub(r'u n ', ' united nations ', text)
+#     text = re.sub(r'u k ', ' united kingdom ', text)
+#     text = re.sub(r'j k ', ' jk ', text)
+#     text = re.sub(r' s ', ' ', text)
+#     text = re.sub(r' yr ', ' year ', text)
+#     text = re.sub(r' l g b t ', ' lgbt ', text)
+#     text = re.sub(r'0km ', '0 km ', text)
+#
+# 
+#       
+#     # Optionally, remove stop words
+#     if remove_stopwords:
+#         text = text.split()
+#         stops = set(stopwords.words("english"))
+#         text = [w for w in text if not w in stops]
+#         text = " ".join(text)
+# =============================================================================
+            
+    return text
+
 contractions = { 
 "ain't": "am not",
 "aren't": "are not",
@@ -111,82 +200,91 @@ contractions = {
 "who's": "who is",
 "won't": "will not",
 "wouldn't": "would not",
+"y'all": "you all",
 "you'd": "you would",
 "you'll": "you will",
 "you're": "you are"
-}
-
-# function to clean text. models perform better with stop words set to false
-def clean_text(text, remove_stopwords = False):
-    
-    # convert to lower case
-    text = text.lower()
-    
-    # Replace contractions with their longer forms 
-    if True:
-        text = text.split()
-        new_text = []
-        for word in text:
-            if word in contractions:
-                new_text.append(contractions[word])
-            else:
-                new_text.append(word)
-        text = " ".join(new_text)
-    
-    # Format words and remove unwanted characters
-    text = re.sub(r'&amp;', '', text) 
-    text = re.sub(r'0,0', '00', text) 
-    #text = re.sub(r'[_"\-;%()|.,+&=*%.,!?:#@\[\]]', ' ', text)
-    text = re.sub(r'[_"\-;%()|+&=*%:#@\[\]]', ' ', text)
-    text = re.sub(r'\'', ' ', text)
-    text = re.sub(r'\$', ' $ ', text)
-    text = re.sub(r'u s ', ' united states ', text)
-    text = re.sub(r'u n ', ' united nations ', text)
-    text = re.sub(r'u k ', ' united kingdom ', text)
-    text = re.sub(r'j k ', ' jk ', text)
-    text = re.sub(r' s ', ' ', text)
-    text = re.sub(r' yr ', ' year ', text)
-    text = re.sub(r' l g b t ', ' lgbt ', text)
-    text = re.sub(r'0km ', '0 km ', text)
-    
-    prefix = 'rt'
-    if text.startswith(prefix):
-        return text[len(prefix):]
-    return text      
-
-    # Optionally, remove stop words
-    if remove_stopwords:
-        text = text.split()
-        stops = set(stopwords.words("english"))
-        text = [w for w in text if not w in stops]
-        text = " ".join(text)
+}  
+   
+contractions_2 = { 
+"aint": "am not",
+"arent": "are not",
+"cant": "cannot",
+"cantve": "cannot have",
+"cause": "because",
+"couldve": "could have",
+"couldnt": "could not",
+"couldntve": "could not have",
+"didnt": "did not",
+"doesnt": "does not",
+"dont": "do not",
+"hadnt": "had not",
+"hadntve": "had not have",
+"hasnt": "has not",
+"havent": "have not",
+#"hed": "he would",
+"hedve": "he would have",
+#"hell": "he will",
+"hes": "he is",
+"howd": "how did",
+"howll": "how will",
+"hows": "how is",
+"id": "i would",
+"ill": "i will",
+"im": "i am",
+"ive": "i have",
+"isnt": "is not",
+"itd": "it would",
+"itll": "it will",
+"its": "it is",
+"lets": "let us",
+"maam": "madam",
+"maynt": "may not",
+"mightve": "might have",
+"mightnt": "might not",
+"mustve": "must have",
+"mustnt": "must not",
+"neednt": "need not",
+"oughtnt": "ought not",
+"shant": "shall not",
+"shant": "shall not",
+#"shed": "she would",
+#"shell": "she will",
+"shes": "she is",
+"shouldve": "should have",
+"shouldnt": "should not",
+"thatd": "that would",
+"thats": "that is",
+"thered": "there had",
+"theres": "there is",
+"theyd": "they would",
+"theyll": "they will",
+"theyre": "they are",
+"theyve": "they have",
+"wasnt": "was not",
+#"wed": "we would",
+#"well": "we will",
+#"were": "we are",
+"weve": "we have",
+"werent": "were not",
+"whatll": "what will",
+"whatre": "what are",
+"whats": "what is",
+"whatve": "what have",
+"whered": "where did",
+"wheres": "where is",
+"wholl": "who will",
+"whos": "who is",
+"wont": "will not",
+"wouldnt": "would not",
+"youd": "you would",
+"youll": "you will",
+"youre": "you are"
+}          
             
-    return text
-
-            
-def plot_confusion_matrix(cm, classes,
-                          normalize=False,
-                          title='Confusion matrix',
-                          cmap=plt.cm.Blues):
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title)
-    plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
-
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
-
-    plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')          
-            
-            
+                
+        
+          
 def getVecType(vecType):
     
     if vecType == 'BOW':
@@ -204,7 +302,7 @@ def getVecType(vecType):
 
 def nbTrain(vecType):
     from sklearn.naive_bayes import MultinomialNB
-    start_timenb = time.time()
+    #start_timenb = time.time()
     
     train_features, test_features = getVecType(vecType)
        
@@ -218,7 +316,7 @@ def nbTrain(vecType):
     
     print("\n")
     print("Naive Bayes  AUC : \n", nbscore,"%")
-    print(" Completion Speed", round((time.time() - start_timenb),5))
+    #print(" Completion Speed", round((time.time() - start_timenb),5))
     print()
     
 # =============================================================================
@@ -238,7 +336,7 @@ def nbTrain(vecType):
 
 def logModTrain(vecType):
     from sklearn.linear_model import LogisticRegression
-    start_timenb = time.time()
+    #start_timenb = time.time()
     
     train_features, test_features = getVecType(vecType)
     
@@ -252,7 +350,7 @@ def logModTrain(vecType):
     
     print("\n")
     print("Multinomial  AUC : \n", linear_score,"%")
-    print(" Completion Speed", round((time.time() - start_timenb),5))
+    #print(" Completion Speed", round((time.time() - start_timenb),5))
     print()
 
     
@@ -274,7 +372,7 @@ def logModTrain(vecType):
     
 def datree(vecType):
     from sklearn import tree
-    start_timedt = time.time()
+    #start_timedt = time.time()
     
     train_features, test_features = getVecType(vecType)
     
@@ -287,13 +385,13 @@ def datree(vecType):
     dtreescore = format(metrics.auc(ddd, ttt))
     dtreescore = float(dtreescore)*100
     print("Decision tree AUC : \n", dtreescore, "%")
-    print(" Completion Speed", round((time.time() - start_timedt),5))
+    #print(" Completion Speed", round((time.time() - start_timedt),5))
     print()
 
 
 def Tsvm(vecType):
     from sklearn.svm import SVC
-    start_timesvm = time.time()
+    #start_timesvm = time.time()
     
     train_features, test_features = getVecType(vecType)
     
@@ -305,12 +403,12 @@ def Tsvm(vecType):
     svc = format(metrics.auc(sss, vvv))
     svc = float(svc)*100
     print("Support vector machine AUC : \n", svc, "%")
-    print(" Completion Speed", round((time.time() - start_timesvm),5))
+    #print(" Completion Speed", round((time.time() - start_timesvm),5))
     print()
 
 def knN(vecType):
     from sklearn.neighbors import KNeighborsClassifier
-    start_timekn = time.time()
+    #start_timekn = time.time()
     
     train_features, test_features = getVecType(vecType)
     
@@ -325,12 +423,12 @@ def knN(vecType):
     kn = float(kn)*100
     
     print("Kneighborsclassifier AUC : \n", kn, "%")
-    print(" Completion Speed", round((time.time() - start_timekn),5))
+    #print(" Completion Speed", round((time.time() - start_timekn),5))
     print()
 
 def RanFo(vecType):
     from sklearn.ensemble import RandomForestClassifier
-    start_timerf = time.time()
+    #start_timerf = time.time()
     
     train_features, test_features = getVecType(vecType)
        
@@ -343,13 +441,13 @@ def RanFo(vecType):
     kn = format(metrics.auc(rrr, fff))
     kn = float(kn)*100
     print("Random Forest AUC : \n", kn, "%")
-    print(" Completion Speed", round((time.time() - start_timerf),5))
+    #print(" Completion Speed", round((time.time() - start_timerf),5))
     print()
     print()
 
 
 
-
+##########################################################################
 vectorizer = CountVectorizer()
 ngram_vectorizer = CountVectorizer(ngram_range = (2,2))
 tfidf_vectorizer = TfidfVectorizer(min_df = 0.03, max_df = 0.97, 
@@ -358,35 +456,75 @@ tfidf_vectorizer = TfidfVectorizer(min_df = 0.03, max_df = 0.97,
 tweets_data = []
 x = []
 y = []
+
+
+retrieveTweet('data/tweetdata.txt')  
+retrieveProcessedData('processed_data/output.xlsx')
+
+cleaned_tweets = []
+
+for i in range(0,len(x)):
+    string = clean_text(x[i], remove_stopwords = False, replace_contractions = True)
+    cleaned_tweets.append(string)
+    
+categorized_fallacies = np.zeros((len(cleaned_tweets),all_fallacies.shape[1]),dtype="float32")
+
+for tweet in range(0,len(cleaned_tweets)):
+    for column in range(0,all_fallacies.shape[1]):    
+        fallacy_words = all_fallacies.iloc[:,column]
+        for fallacy in range(0,len(fallacy_words)):
+            if len(fallacy_words[fallacy].split()) == 1:
+                if fallacy_words[fallacy] in cleaned_tweets[tweet].split():
+                    categorized_fallacies[tweet,column] += 1
+                else:
+                    categorized_fallacies[tweet,column] += 0
+            else:
+                words = fallacy_words[fallacy].split()
+                string = cleaned_tweets[tweet]
+                
+                if all(x in string for x in words):
+                    categorized_fallacies[tweet,column] += 1
+                else:
+                    categorized_fallacies[tweet,column] += 0
+            
+
+scored_fallacies = pd.DataFrame(data = categorized_fallacies, columns = all_fallacies.columns)
+cleaned_tweets_df = pd.DataFrame({"tweets":cleaned_tweets})
+sentiment = pd.DataFrame({"sentiment":y})
+bind_dat = pd.concat([cleaned_tweets_df.reset_index(drop=True), sentiment, scored_fallacies], axis = 1)
+
+
+bind_dat.to_csv('processed_data/categorized_fallacies.csv', index=False)
+
+Df = pd.read_csv('processed_data/categorized_fallacies.csv')
+
+total = Df.iloc[:,2:].sum(axis=1)
+total_Df = pd.DataFrame({"total": total})
+
+Df1 = pd.concat([Df.reset_index(drop=True), total_Df], axis = 1)
+
+idx = Df1.index[Df1['total'] > 0]
+possible_fallacies = Df1.loc[idx]
+idx = Df1.index[Df1['sentiment'] < 0]
+negative_fallacies = Df1.loc[idx]
+# create train test split
 x_train = [] 
 x_test = [] 
 y_train = [] 
 y_test = []
 
-
-retrieveTweet('data/tweetdata.txt')  
-retrieveProcessedData('processed_data/output.xlsx')
-clean_text(x, remove_stopwords = True)
-
-cleaned_tweets = []
-
-for i in range(0,len(x)):
-    string = clean_text(x[i], remove_stopwords = False)
-    cleaned_tweets.append(string)
-
-
-x_train, x_test, y_train, y_test = train_test_split(cleaned_tweets, y, 
+x_train, x_test, y_train, y_test = train_test_split(Df1, sentiment, 
                                                     test_size=0.3, 
                                                     random_state=0, 
-                                                    stratify=y)
+                                                    stratify=sentiment)
     
         
-logModTrain(vecType = 'ngram')
+logModTrain(vecType = 'BOW')
 nbTrain(vecType = 'ngram')
-datree(vecType = 'ngram')
-Tsvm(vecType = 'ngram')
-knN(vecType = 'ngram')
-RanFo(vecType = 'ngram')
+datree(vecType = 'BOW')
+Tsvm(vecType = 'BOW')
+knN(vecType = 'BOW')
+RanFo(vecType = 'BOW')
     
 # =============================================================================
 # def datreeINPUT(inputtweet):
@@ -419,5 +557,30 @@ RanFo(vecType = 'ngram')
 # inputtweet = input()
 # 
 # datreeINPUT(inputtweet)
+# 
+# =============================================================================
+
+# =============================================================================
+# def plot_confusion_matrix(cm, classes,
+#                           normalize=False,
+#                           title='Confusion matrix',
+#                           cmap=plt.cm.Blues):
+#     plt.imshow(cm, interpolation='nearest', cmap=cmap)
+#     plt.title(title)
+#     plt.colorbar()
+#     tick_marks = np.arange(len(classes))
+#     plt.xticks(tick_marks, classes, rotation=45)
+#     plt.yticks(tick_marks, classes)
+# 
+#     fmt = '.2f' if normalize else 'd'
+#     thresh = cm.max() / 2.
+#     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+#         plt.text(j, i, format(cm[i, j], fmt),
+#                  horizontalalignment="center",
+#                  color="white" if cm[i, j] > thresh else "black")
+# 
+#     plt.tight_layout()
+#     plt.ylabel('True label')
+#     plt.xlabel('Predicted label')          
 # 
 # =============================================================================

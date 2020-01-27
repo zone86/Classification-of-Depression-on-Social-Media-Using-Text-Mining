@@ -136,7 +136,7 @@ all_fallacies = pd.DataFrame({'being_right':['right',
                       'will always',
                       'now',
                       'because',
-                      'i will' ],
+                      'i will never' ],
 
 'personalization':['happy for',
                    'compare',

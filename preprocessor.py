@@ -19,21 +19,23 @@ x = []
 y = []
 k = []
 some_milby = []
+
 print("===========================")
 print("Starting Preprocess Function")
 print("=========================== \n\n")
 
 def getdata(dataurl):
-    print("===========================")
+    
     print("Retrieving TXT File")
     tweets_data_path = dataurl
-    tweets_file = open(tweets_data_path, "r")
+    tweets_file  = open(tweets_data_path, "r") 
+        
     for line in tweets_file:
         try:
-            tweet = json.loads(line)
-            tweets_data.append(tweet)
+          tweet = json.loads(line)
+          tweets_data.append(tweet)
         except:
-            continue
+           continue
     print("===========================")
     print("Retrieving Successfull")
     print("=========================== \n \n")
@@ -58,6 +60,21 @@ def processdata():
     print("Data Tweets Recovered")
     print("===========================\n\n")
     
+def get_csv_data(tweets_data_path):
+    
+    open_file = open(tweets_data_path, encoding = 'ISO-8859-1') 
+    read_file = pd.read_csv(open_file)
+    
+    tweets_data = read_file.iloc[:,0:2]
+    
+    for i in range(len(tweets_data)):
+        o = tweets_data.iloc[i,0]
+        i = tweets_data.iloc[i,1]
+        x.append(i)
+        k.append(o)
+    print("===========================")
+    print("Dictionary Preparation Done")
+    print("===========================\n\n")  
     
     
 def readdict(dataurl):
@@ -88,6 +105,7 @@ def addpolarity():
     for j in x:
  
             tweet_token = j
+            
             token = word_tokenize(tweet_token)
             sumnum = 0
             sum_word = 0
@@ -128,7 +146,9 @@ def addpolarity():
                     
                 
             sum_var = []    
+
             varid = k[counter]
+            
             sum_var.append(varid)
             sum_var.append(sum_more)
             some_milby.append(sum_var)
@@ -159,10 +179,13 @@ def savetoxlsx():
     print("===========================") 
     
 
-def runall():
-    getdata('data/tweetdata.txt')
-    readdict('data/dictionary.tsv')
+# get data set
+#getdata('data/controlTweets.csv')
+get_csv_data('data/controlTweets.csv')
+
+
+# add sentiments to dataset
+readdict('data/dictionary.tsv')
     
 
 
-runall()

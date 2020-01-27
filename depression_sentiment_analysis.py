@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on the day we all start to love our self.
-
 @author: Cyrzon
 """
 
 import json
 import pandas as pd
-#import time
 import numpy as np
 import re
-from nltk.stem import WordNetLemmatizer
+from nltk.stem.lancaster import LancasterStemmer
 from nltk.corpus import stopwords
-import functools
+import nltk
+import itertools
 import pdb
 import csv
+import time
+import math
 
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.model_selection import train_test_split
-from sklearn import metrics
+#import string
+import preprocessor as p
 
-#from sklearn.metrics import roc_auc_score
-#import matplotlib.pyplot as plt 
-#from sklearn.metrics import confusion_matrix
-
-import fallacies
-
-all_fallacies = fallacies.all_fallacies
-
-lemmatizer = WordNetLemmatizer()
+# =============================================================================
+# import fallacies
+# 
+# all_fallacies = fallacies.all_fallacies
+# 
+# =============================================================================
+#lemmatizer = LancasterStemmer()
 
 def retrieveTweet(data_url):
 
@@ -48,16 +45,17 @@ def retrieveProcessedData(Pdata_url):
         if tweets_data[i]['id']==sent['id'][i]:
             x.append(tweets_data[i]['text'])
             y.append(sent['sentiment'][i])
-            
+
+
 # function to clean text. models perform better with stop words set to false
-def clean_text(text, remove_stopwords = False, replace_contractions = True):
+def clean_text(text, replace_contractions = True):
     
     # convert to lower case
     text = text.lower()
     
-    lemmatized = []
-    for word in text:
-        lemmatized.append(lemmatizer.lemmatize(word))
+    #lemmatized = []
+    #for word in text:
+    #    lemmatized.append(lemmatizer.lemmatize(word))
     
     
     # Replace contractions with their longer forms 
@@ -80,6 +78,7 @@ def clean_text(text, remove_stopwords = False, replace_contractions = True):
                 new_text_2.append(word_2)
         text = " ".join(new_text_2)
     
+    #pdb.set_trace()
     
     # Format words and remove unwanted characters
     text = re.sub('(http\S+)|(https\S+)', '', text) # remove URLs
@@ -87,47 +86,56 @@ def clean_text(text, remove_stopwords = False, replace_contractions = True):
     
     if text.startswith('rt '): # remove re-tweets
         text = text[len('rt ')+1:]
+        
+    text = re.sub(r'(.)\1+', r'\1\1', text) # remove repeating characters
     
     text = re.sub(r'#([^\s]+)', r'\1', text) # remove hashtags
-    text = re.sub(r'[_"\-;%()|+&=*%:]', '', text) # remove characters
+    text = re.sub(r'[_"\-;%()|+&=~*%:]', '', text) # remove characters
+    
+    text = re.sub(r'[^\x00-\x7F]+',' ', text) #remove emojis from tweet
+    text = emoji_pattern.sub(r'', text)#filter using NLTK library append it to a string
+    
+    text = re.sub("[<@*&?].*[>@*&?]", "", text) # remove everything between < and >
     
     # Custom removals
-    text = re.sub(r' ppl', ' people', text)
-    text = re.sub(r' ur', ' you are', text)
-    #text = re.sub(r' w ', ' with ', text)
-    text = re.sub(r' rn', ' right now', text)
-    text = re.sub(r' cos', ' because', text)
-    text = re.sub(r' dunno', ' don\'t know', text)
-    text = re.sub(r' gonna', ' going to', text)
-    text = re.sub(r' tho', ' although', text)
-    
-    
+    text = re.sub(r'&amp', '', text)
+    text = re.sub(r' amp ', ' and ', text)
+    text = re.sub(r' idk ', ' i do not know ', text)
+    text = re.sub(r' idc ', ' i do not care ', text)
+    text = re.sub(r' ppl', ' people ', text)
+    text = re.sub(r' u ', ' you ', text)
+    text = re.sub(r' r ', ' are ', text)
+    text = re.sub(r' bc ', ' because ', text)
+    text = re.sub(r' ur ', ' you are ', text)
+    text = re.sub(r' w ', ' with ', text)
+    text = re.sub(r' rn ', ' right now ', text)
+    text = re.sub(r' cuz ', ' because ', text)
+    text = re.sub(r' cos ', ' because ', text)
+    text = re.sub(r' coz ', ' because ', text)
+    text = re.sub(r' dunno ', ' do not know ', text)
+    text = re.sub(r' gonna ', ' going to ', text)
+    text = re.sub(r' tho ', ' although ', text)
+    text = re.sub(r' thru ', ' through ', text)
+    text = re.sub(r' plz ', ' please ', text)
+    text = re.sub(r' jk ', ' joking ', text)
+    text = re.sub(r'yup', 'yes', text)
+    text = re.sub(r' \'em',' them', text)
+    text = re.sub(r' til ', 'until ', text)
+    text = re.sub(r' cnt ', ' can not ', text)
+    text = re.sub(r' frm ', ' from ', text)
+        
     return text
-# =============================================================================
-#     text = re.sub(r'&amp;', '', text) 
-#     text = re.sub(r'0,0', '00', text) 
-#     text = re.sub(r'\'', ' ', text)
-#     text = re.sub(r'\$', ' $ ', text)
-#     text = re.sub(r'u s ', ' united states ', text)
-#     text = re.sub(r'u n ', ' united nations ', text)
-#     text = re.sub(r'u k ', ' united kingdom ', text)
-#     text = re.sub(r'j k ', ' jk ', text)
-#     text = re.sub(r' s ', ' ', text)
-#     text = re.sub(r' yr ', ' year ', text)
-#     text = re.sub(r' l g b t ', ' lgbt ', text)
-#     text = re.sub(r'0km ', '0 km ', text)
-#
-# 
-#       
-#     # Optionally, remove stop words
-#     if remove_stopwords:
-#         text = text.split()
-#         stops = set(stopwords.words("english"))
-#         text = [w for w in text if not w in stops]
-#         text = " ".join(text)
-# =============================================================================
-            
-    return text
+
+    
+
+emoji_pattern = re.compile("["
+         u"\U0001F600-\U0001F64F"  # emoticons
+         u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+         u"\U0001F680-\U0001F6FF"  # transport & map symbols
+         u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+         u"\U00002702-\U000027B0"
+         u"\U000024C2-\U0001F251"
+         "]+", flags=re.UNICODE)
 
 contractions = { 
 "ain't": "am not",
@@ -277,310 +285,179 @@ contractions_2 = {
 "whos": "who is",
 "wont": "will not",
 "wouldnt": "would not",
+"yall": "you all",
 "youd": "you would",
 "youll": "you will",
 "youre": "you are"
 }          
             
-                
-        
-          
-def getVecType(vecType):
-    
-    if vecType == 'BOW':
-        train_features = vectorizer.fit_transform(x_train)
-        test_features = vectorizer.transform(x_test)
-    elif vecType == 'ngram':
-        train_features = ngram_vectorizer.fit_transform(x_train)
-        test_features = ngram_vectorizer.transform(x_test)
-    elif vecType == 'tfidf':
-        train_features = tfidf_vectorizer.fit_transform(x_train)
-        test_features = tfidf_vectorizer.transform(x_test)
-        
-    return train_features, test_features
-
-
-def nbTrain(vecType):
-    from sklearn.naive_bayes import MultinomialNB
-    #start_timenb = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-       
-    nb = MultinomialNB()
-    nb.fit(train_features, [int(r) for r in y_train])
-    
-    predictions = nb.predict(test_features)
-    fpr, tpr, thresholds = metrics.roc_curve(y_test, predictions, pos_label=1)
-    nbscore = format(metrics.auc(fpr, tpr))
-    nbscore = float(nbscore)*100
-    
-    print("\n")
-    print("Naive Bayes  AUC : \n", nbscore,"%")
-    #print(" Completion Speed", round((time.time() - start_timenb),5))
-    print()
-    
-# =============================================================================
-#     nb_matrix = confusion_matrix(y_test, predictions)
-#     plt.figure()
-#     plot_confusion_matrix(nb_matrix, classes=[-1,0,1], title='Confusion matrix For NB classifier')
-# =============================================================================
-    
-#    test_try= vectorizer.transform(["Lets help those in need, fight anxiety and bring happiness"])
-#    test_try2= vectorizer.transform(["Dont look down at people with anxiety rather give love and respect to all. shout! Equality."])
-#    predictr = nb.predict(test_try)
-#    predictt = nb.predict(test_try2)
-    
-    
-#    print(predictr)
-#    print(predictt)
-
-def logModTrain(vecType):
-    from sklearn.linear_model import LogisticRegression
-    #start_timenb = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-    
-    multi = LogisticRegression(solver = 'lbfgs', multi_class = 'multinomial' )
-    multi.fit(train_features, [int(r) for r in y_train])
-    
-    multi_predictions = multi.predict(test_features)
-    fpr, tpr, thresholds = metrics.roc_curve(y_test, multi_predictions, pos_label=1)
-    linear_score = format(metrics.auc(fpr, tpr))
-    linear_score = float(linear_score)*100
-    
-    print("\n")
-    print("Multinomial  AUC : \n", linear_score,"%")
-    #print(" Completion Speed", round((time.time() - start_timenb),5))
-    print()
-
-    
-# =============================================================================
-#     linear_matrix = confusion_matrix(y_test, multi_predictions)
-#     plt.figure()
-#     plot_confusion_matrix(linear_matrix, classes=[-1,0,1], title='Confusion matrix For multinomial classifier')
-# =============================================================================
-    
-
-#    test_try= vectorizer.transform(["Lets help those in need, fight anxiety and bring happiness"])
-#    test_try2= vectorizer.transform(["Dont look down at people with anxiety rather give love and respect to all. shout! Equality."])
-#    predictr = nb.predict(test_try)
-#    predictt = nb.predict(test_try2)
-        
-#    print(predictr)
-#    print(predictt)
-
-    
-def datree(vecType):
-    from sklearn import tree
-    #start_timedt = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-    
-    dtree = tree.DecisionTreeClassifier()
-    
-    dtree = dtree.fit(train_features, [int(r) for r in y_train])
-    
-    prediction1 = dtree.predict(test_features)
-    ddd, ttt, thresholds = metrics.roc_curve(y_test, prediction1, pos_label=1)
-    dtreescore = format(metrics.auc(ddd, ttt))
-    dtreescore = float(dtreescore)*100
-    print("Decision tree AUC : \n", dtreescore, "%")
-    #print(" Completion Speed", round((time.time() - start_timedt),5))
-    print()
-
-
-def Tsvm(vecType):
-    from sklearn.svm import SVC
-    #start_timesvm = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-    
-    svc = SVC()
-    
-    svc = svc.fit(train_features, [int(r) for r in y_train])
-    prediction2 = svc.predict(test_features)
-    sss, vvv, thresholds = metrics.roc_curve(y_test, prediction2, pos_label=1)
-    svc = format(metrics.auc(sss, vvv))
-    svc = float(svc)*100
-    print("Support vector machine AUC : \n", svc, "%")
-    #print(" Completion Speed", round((time.time() - start_timesvm),5))
-    print()
-
-def knN(vecType):
-    from sklearn.neighbors import KNeighborsClassifier
-    #start_timekn = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-    
-    kn = KNeighborsClassifier(n_neighbors=2, 
-                              algorithm='kd_tree', 
-                              leaf_size = 20000)
-        
-    kn = kn.fit(train_features, [int(i) for i in y_train])
-    prediction3 = kn.predict(test_features)
-    kkk, nnn, thresholds = metrics.roc_curve(y_test, prediction3, pos_label=1)
-    kn = format(metrics.auc(kkk, nnn))
-    kn = float(kn)*100
-    
-    print("Kneighborsclassifier AUC : \n", kn, "%")
-    #print(" Completion Speed", round((time.time() - start_timekn),5))
-    print()
-
-def RanFo(vecType):
-    from sklearn.ensemble import RandomForestClassifier
-    #start_timerf = time.time()
-    
-    train_features, test_features = getVecType(vecType)
-       
-    rf = RandomForestClassifier(max_depth=2, random_state=0)
-    
-    
-    rf = rf.fit(train_features, [int(i) for i in y_train])
-    prediction4 = rf.predict(test_features)
-    rrr, fff, thresholds = metrics.roc_curve(y_test, prediction4, pos_label=1)
-    kn = format(metrics.auc(rrr, fff))
-    kn = float(kn)*100
-    print("Random Forest AUC : \n", kn, "%")
-    #print(" Completion Speed", round((time.time() - start_timerf),5))
-    print()
-    print()
-
-
-
 ##########################################################################
-vectorizer = CountVectorizer()
-ngram_vectorizer = CountVectorizer(ngram_range = (2,2))
-tfidf_vectorizer = TfidfVectorizer(min_df = 0.03, max_df = 0.97, 
-                                   ngram_range = (2,2))
 
-tweets_data = []
-x = []
-y = []
+#retrieveTweet('data/tweetdata.txt')  
+controlTweets = open('data/controlTweets.csv', encoding = 'ISO-8859-1', errors = 'ignore')
+controlTweets_read = pd.read_csv(controlTweets, index_col=False)
 
-
-retrieveTweet('data/tweetdata.txt')  
-retrieveProcessedData('processed_data/output.xlsx')
+# source preprocessor
+#get_csv_data('data/controlTweets.csv')
+#readdict('data/dictionary.tsv')
 
 cleaned_tweets = []
 
-for i in range(0,len(x)):
-    string = clean_text(x[i], remove_stopwords = False, replace_contractions = True)
+for i in range(0,len(controlTweets_read)):
+    string = p.clean(controlTweets_read.iloc[i,1]) # clean tweets with module
     cleaned_tweets.append(string)
-    
-categorized_fallacies = np.zeros((len(cleaned_tweets),all_fallacies.shape[1]),dtype="float32")
 
-for tweet in range(0,len(cleaned_tweets)):
-    for column in range(0,all_fallacies.shape[1]):    
-        fallacy_words = all_fallacies.iloc[:,column]
-        for fallacy in range(0,len(fallacy_words)):
-            if len(fallacy_words[fallacy].split()) == 1:
-                if fallacy_words[fallacy] in cleaned_tweets[tweet].split():
+cleaned_tweets_manual = []
+
+for i in range(0,len(cleaned_tweets)):
+    string = clean_text(cleaned_tweets[i]) # custom function to clean what the module missed
+    cleaned_tweets_manual.append(string)
+    
+sentiment = pd.read_excel('processed_data/output.xlsx')
+text = pd.DataFrame(cleaned_tweets_manual, columns = ['tweets'])
+bind_tweet_sent = pd.concat([sentiment.reset_index(drop=True), text],
+                            axis = 1)
+bind_tweet_sent.to_csv('processed_data/tweets_sentiments.csv', index=False)
+
+################################################################################
+
+# add cognitive fallacies
+
+tweets_sentiments = pd.read_csv('processed_data/tweets_sentiments.csv')
+#retrieveProcessedData('processed_data/output.xlsx')
+
+#all_fallacies_stack = all_fallacies.melt(id_vars)
+categorized_fallacies = np.zeros((len(tweets_sentiments),all_fallacies.shape[1]), dtype="float32")
+
+clean_tweets_length = range(0,len(tweets_sentiments))
+
+all_fallacies_length = range(0,all_fallacies.shape[0])
+all_fallacies_width = range(0,all_fallacies.shape[1])
+
+length = all_fallacies.shape[0]
+width = all_fallacies.shape[1]
+
+### experimenting with faster method ???
+
+lengths = np.zeros((length,width), dtype="float32")
+
+for column in all_fallacies_width:    
+        
+    fallacy_words = all_fallacies.iloc[:,column]
+        
+    for fallacy in all_fallacies_length:
+        fallacy_words_length  = len(fallacy_words[fallacy].split() )
+        lengths[fallacy, column] = fallacy_words_length
+ 
+lengths_df = pd.DataFrame(lengths)
+
+
+
+for tweet in clean_tweets_length:
+    l = list(lengths_df.itertuples(index=False, name=None))
+    for i in l:
+        #start_time = time.time()
+        pdb.set_trace()
+        fallacy_words = all_fallacies.iloc[:,index]
+    
+        for fallacy in range(0,all_fallacies_length):
+            fallacy_words_length = len(fallacy_words[fallacy].split())
+            
+            if fallacy_words_length == 1:
+                a = fallacy_words[fallacy]
+                b = cleaned_tweets_manual[tweet].split()
+                if a in b:
                     categorized_fallacies[tweet,column] += 1
                 else:
                     categorized_fallacies[tweet,column] += 0
             else:
                 words = fallacy_words[fallacy].split()
-                string = cleaned_tweets[tweet]
+                string = cleaned_tweets_manual[tweet]
                 
                 if all(x in string for x in words):
                     categorized_fallacies[tweet,column] += 1
                 else:
                     categorized_fallacies[tweet,column] += 0
-            
+    print("Processing time: ", round((time.time() - start_time),8), "Seconds \n\n")
+
+
+# with map and list comprehension???
+l = list(itertools.product(all_fallacies_length, all_fallacies_width))
+result = [len(all_fallacies.iloc[i,x].split()) for i, x in enumerate(l)]
+
+tuples = list(itertools.product(all_fallacies_width, all_fallacies_length))
+result = list(map(lambda m: all_fallacies.iloc[m[0],m[1]].split(), tuples))
+print(result)
+
+    
+##################################################################################
+### DONT TOUCH - WOKRING!!! ### ### ### 
+
+for tweet in clean_tweets_length:
+    #pdb.set_trace()
+    if pd.isnull(tweets_sentiments.iloc[tweet]['tweets']):
+        continue
+    
+    for column in all_fallacies_width:            
+        fallacy_words = all_fallacies.iloc[:,column]
+        
+        for fallacy in all_fallacies_length:
+            fallacy_words_length  = len(fallacy_words[fallacy].split() )
+ 
+            if fallacy_words_length == 1:
+                #pdb.set_trace()
+                a = fallacy_words[fallacy]
+                b = tweets_sentiments.iloc[tweet]['tweets'].split()
+                #pdb.set_trace()       
+                                     
+                if a in b:
+                    #pdb.set_trace()
+                    categorized_fallacies[tweet,column] += 1
+                else:
+                    #pdb.set_trace()
+                    categorized_fallacies[tweet,column] += 0                
+                
+            else:
+                
+                words = fallacy_words[fallacy].split()
+                string = tweets_sentiments.iloc[tweet]['tweets']
+                
+                if all(x in string for x in words):
+                    #pdb.set_trace()
+                    categorized_fallacies[tweet,column] += 1
+                else:
+                    categorized_fallacies[tweet,column] += 0
+
+
 
 scored_fallacies = pd.DataFrame(data = categorized_fallacies, columns = all_fallacies.columns)
-cleaned_tweets_df = pd.DataFrame({"tweets":cleaned_tweets})
-sentiment = pd.DataFrame({"sentiment":y})
-bind_dat = pd.concat([cleaned_tweets_df.reset_index(drop=True), sentiment, scored_fallacies], axis = 1)
+bind_dat = pd.concat([tweets_sentiments.reset_index(drop=True), 
+                      #sentiment, 
+                      scored_fallacies], axis = 1)
 
 
 bind_dat.to_csv('processed_data/categorized_fallacies.csv', index=False)
 
+#####################################################################################
+#####################################################################################
+
 Df = pd.read_csv('processed_data/categorized_fallacies.csv')
+
 
 total = Df.iloc[:,2:].sum(axis=1)
 total_Df = pd.DataFrame({"total": total})
 
 Df1 = pd.concat([Df.reset_index(drop=True), total_Df], axis = 1)
 
-idx = Df1.index[Df1['total'] > 0]
-possible_fallacies = Df1.loc[idx]
-idx = Df1.index[Df1['sentiment'] < 0]
-negative_fallacies = Df1.loc[idx]
-# create train test split
-x_train = [] 
-x_test = [] 
-y_train = [] 
-y_test = []
+Df1 = Df1.sort_values('tweets', ascending=False)
+Df1 = Df1.drop_duplicates(subset='tweets', keep='first')
 
-x_train, x_test, y_train, y_test = train_test_split(Df1, sentiment, 
-                                                    test_size=0.3, 
-                                                    random_state=0, 
-                                                    stratify=sentiment)
-    
-        
-logModTrain(vecType = 'BOW')
-nbTrain(vecType = 'ngram')
-datree(vecType = 'BOW')
-Tsvm(vecType = 'BOW')
-knN(vecType = 'BOW')
-RanFo(vecType = 'BOW')
-    
-# =============================================================================
-# def datreeINPUT(inputtweet):
-#     from sklearn import tree
-#     train_featurestree = vectorizer.fit_transform(x)
-#     dtree = tree.DecisionTreeClassifier()
-#     
-#     dtree = dtree.fit(train_featurestree, [int(r) for r in y])
-#     
-#     
-#     inputdtree= vectorizer.transform([inputtweet])
-#     predictt = dtree.predict(inputdtree)
-#     
-#     if predictt == 1:
-#         predictt = "Positive"
-#     elif predictt == 0:
-#         predictt = "Neutral"
-#     elif predictt == -1:
-#         predictt = "Negative"
-#     else:
-#         print("Nothing")
-#     
-#     print("\n*****************")
-#     print(predictt)
-#     print("*****************")
-# 
-# runall()
-# 
-# print("Input your tweet : ")
-# inputtweet = input()
-# 
-# datreeINPUT(inputtweet)
-# 
-# =============================================================================
+idx = Df1.index[(Df1['total'] > 0) 
+#& (Df1['sentiment'] < 0)
+]
 
-# =============================================================================
-# def plot_confusion_matrix(cm, classes,
-#                           normalize=False,
-#                           title='Confusion matrix',
-#                           cmap=plt.cm.Blues):
-#     plt.imshow(cm, interpolation='nearest', cmap=cmap)
-#     plt.title(title)
-#     plt.colorbar()
-#     tick_marks = np.arange(len(classes))
-#     plt.xticks(tick_marks, classes, rotation=45)
-#     plt.yticks(tick_marks, classes)
-# 
-#     fmt = '.2f' if normalize else 'd'
-#     thresh = cm.max() / 2.
-#     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-#         plt.text(j, i, format(cm[i, j], fmt),
-#                  horizontalalignment="center",
-#                  color="white" if cm[i, j] > thresh else "black")
-# 
-#     plt.tight_layout()
-#     plt.ylabel('True label')
-#     plt.xlabel('Predicted label')          
-# 
-# =============================================================================
+all_possible_fallacies = Df1.loc[idx]
+negative_possible_fallacies = Df1.loc[idx]
+    
+all_possible_fallacies.to_csv('processed_data/all_possible_fallacies.csv', index=False)
+negative_possible_fallacies.to_csv('processed_data/negative_possible_fallacies.csv', index=False)

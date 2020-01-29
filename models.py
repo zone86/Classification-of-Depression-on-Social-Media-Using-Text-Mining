@@ -11,6 +11,7 @@ from nltk.stem.lancaster import LancasterStemmer
 from nltk.corpus import stopwords
 import nltk
 import pdb
+from scipy import stats
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -18,7 +19,7 @@ from skopt import BayesSearchCV
 from skopt.space import Real, Integer, Categorical
 import sklearn.metrics as metrics
 
-
+from sklearn.utils import resample
 
 Df = pd.read_csv('processed_data/all_possible_fallacies_manual_labelling_v1.csv')
 
@@ -42,10 +43,13 @@ x_train, x_test, y_train, y_test = train_test_split(data, label,
                                                     stratify = label)
 
 
+stats.itemfreq(y_train)
+stats.itemfreq(y_test)
+
 vectorizer = CountVectorizer()
 ngram_vectorizer = CountVectorizer(ngram_range = (2,3))
-tfidf_vectorizer = TfidfVectorizer(min_df = 0.03, max_df = 0.97, 
-                                   ngram_range = (2,2))
+tfidf_vectorizer = TfidfVectorizer(min_df = 0.25, max_df = 0.75, 
+                                   ngram_range = (1,1))
 
 
 def getVecType(vecType):
@@ -67,7 +71,10 @@ def bayes_CV(model, search, train, iterations, CV, score):
                         search,
                         n_iter = iterations,
                         cv = CV,
-                        scoring = score)
+                        scoring = score,
+                        n_jobs = 2,
+                        n_points = 20,
+                        random_state = 0)
 
     opt_result = opt.fit(train, y_train)
     
@@ -209,7 +216,7 @@ def logModTrain(vecType, tuning = False, tune_by = 'grid'):
         
         if tune_by == 'grid':
             
-            grid_log_search = [{'penalty': ['l1'],
+            grid_l1l2_search = [{'penalty': ['l1'],
                                'solver': ['saga'],
                                'C': [0.01, 0.1, 1, 10, 100, 1000],                               
                                'max_iter': [100, 200, 300, 500, 800, 1000],
@@ -225,7 +232,7 @@ def logModTrain(vecType, tuning = False, tune_by = 'grid'):
                                     'l1_ratio': [.01, .1, .2, 0.5, 0.6, 0.8, .9, .95, .99]}]
                                 
         
-            params = grid_search(model = log_model, search = grid_log_search, 
+            l1l2_params = grid_search(model = log_model, search = grid_l1l2_search, 
                           train = train_features, 
                           CV = 3, score = 'roc_auc')
             
@@ -233,8 +240,8 @@ def logModTrain(vecType, tuning = False, tune_by = 'grid'):
                           train = train_features, 
                           CV = 3, score = 'roc_auc')
             
-            if params[1] > elastic_params[1]:
-                params = params[0]
+            if l1l2_params[1] > elastic_params[1]:
+                params = l1l2_params[0]
                 best_model = LogisticRegression(**params)
             else:
                 params = elastic_params[0]
@@ -420,22 +427,106 @@ def datree(vecType, tuning = False, tune_by = 'grid'):
         print()
 
 
-def Tsvm(vecType):
+def Tsvm(vecType, tuning, tune_by):
     from sklearn.svm import SVC
     #start_timesvm = time.time()
     
     train_features, test_features = getVecType(vecType)
     
-    svc = SVC()
+    svc = SVC(random_state = 0)
+           
+    if tuning:
+                       
+        if tune_by == 'grid':
+            
+            grid_log_search = [{'penalty': ['l1'],
+                               'solver': ['saga'],
+                               'C': [0.01, 0.1, 1, 10, 100, 1000],                               
+                               'max_iter': [100, 200, 300, 500, 800, 1000],
+                               },
+                                {'penalty': ['l2'],
+                                'solver': ['newton-cg', 'lbfgs', 'sag', 'saga'],
+                                'C': [0.01, 0.1, 1, 10, 100, 1000],                               
+                                'max_iter': [100, 200, 300, 500, 800, 1000]
+                               }]
+            
+            grid_elastic_search = [{'alpha': [.01, .1, .2, .4, .5, .6, .7, .8, .9, .95, .99], 
+                                    'max_iter': [100, 200, 300, 500, 800, 1000],
+                                    'l1_ratio': [.01, .1, .2, 0.5, 0.6, 0.8, .9, .95, .99]}]
+                                
+        
+            params = grid_search(svc = mlp, search = grid_log_search, 
+                          train = train_features, 
+                          CV = 3, score = 'roc_auc')
+            
+            elastic_params = grid_search(model = elastic_model, search = grid_elastic_search, 
+                          train = train_features, 
+                          CV = 3, score = 'roc_auc')
+            
+            if params[1] > elastic_params[1]:
+                params = params[0]
+                best_model = LogisticRegression(**params)
+            else:
+                params = elastic_params[0]
+                best_model = ElasticNet(**params)
+            
+        elif tune_by == 'bayes':
+            
+            bayes_svc_search = [
+                    {'kernel': Categorical(['linear']),
+                     'C': Real(0.01, 1000, prior = 'log-uniform'),                               
+                     'gamma': Real(1e-6, .01, prior = 'log-uniform')
+                     },
+                    {'kernel': Categorical(['rbf']),
+                     'C': Real(0.01, 1000, prior = 'log-uniform'),                               
+                     'gamma': Real(1e-6, .01, prior = 'log-uniform')
+                     },
+                    {'kernel': Categorical(['poly']),
+                     'degree': Integer(1,5),
+                     'C': Real(0.01, 1000, prior = 'log-uniform'),                               
+                     'gamma': Real(1e-6, .01, prior = 'log-uniform')
+                     }]
+                    
+            
+            
+            params = bayes_CV(model = svc, search = bayes_svc_search, 
+                              train = train_features, 
+                              iterations = 50, CV = 3,
+                              score = 'roc_auc')
+            #pdb.set_trace()
+            params[0].update({'random_state': 0})
+            
+            best_model = SVC(**params[0])
+        else:
+            print('Need either bayes or grid as tune_by')
+        
+        
+        
+        best_model = best_model.fit(train_features, y_train)
+
+        best_model_predictions = best_model.predict(test_features)
+        
+        fpr, tpr, thresholds = metrics.roc_curve(y_test, best_model_predictions , pos_label = 1)
+        linear_score = format(metrics.auc(fpr, tpr))
+        linear_score = float(linear_score)*100
+        
+        print("\n")
+        print("Params : \n", params)
+        print("\n")
+        print("AUC : \n", linear_score,"%")
+        #print(" Completion Speed", round((time.time() - start_timenb),5))
+        print()
+        
+    else:
     
-    svc = svc.fit(train_features, [int(r) for r in y_train])
-    prediction2 = svc.predict(test_features)
-    sss, vvv, thresholds = metrics.roc_curve(y_test, prediction2, pos_label=1)
-    svc = format(metrics.auc(sss, vvv))
-    svc = float(svc)*100
-    print("Support vector machine AUC : \n", svc, "%")
-    #print(" Completion Speed", round((time.time() - start_timesvm),5))
-    print()
+        svc = svc.fit(train_features, [int(r) for r in y_train])
+        prediction2 = svc.predict(test_features)
+        sss, vvv, thresholds = metrics.roc_curve(y_test, prediction2, pos_label=1)
+        svc = format(metrics.auc(sss, vvv))
+        svc = float(svc)*100
+        print("Support vector machine AUC : \n", svc, "%")
+        #print(" Completion Speed", round((time.time() - start_timesvm),5))
+        print()
 
 def knN(vecType):
     from sklearn.neighbors import KNeighborsClassifier
@@ -476,7 +567,7 @@ def RanFo(vecType):
     print()
     print()
     
-def mlp(vecType):
+def mlp(vecType, tuning = False, tune_by = 'grid'):
     from sklearn.neural_network import MLPClassifier
     #start_timerf = time.time()
     
@@ -484,21 +575,98 @@ def mlp(vecType):
        
     mlp = MLPClassifier(random_state=0)
     
+    if tuning:
+                       
+        if tune_by == 'grid':
+            
+            grid_log_search = [{'penalty': ['l1'],
+                               'solver': ['saga'],
+                               'C': [0.01, 0.1, 1, 10, 100, 1000],                               
+                               'max_iter': [100, 200, 300, 500, 800, 1000],
+                               },
+                                {'penalty': ['l2'],
+                                'solver': ['newton-cg', 'lbfgs', 'sag', 'saga'],
+                                'C': [0.01, 0.1, 1, 10, 100, 1000],                               
+                                'max_iter': [100, 200, 300, 500, 800, 1000]
+                               }]
+            
+            grid_elastic_search = [{'alpha': [.01, .1, .2, .4, .5, .6, .7, .8, .9, .95, .99], 
+                                    'max_iter': [100, 200, 300, 500, 800, 1000],
+                                    'l1_ratio': [.01, .1, .2, 0.5, 0.6, 0.8, .9, .95, .99]}]
+                                
+        
+            params = grid_search(model = mlp, search = grid_log_search, 
+                          train = train_features, 
+                          CV = 3, score = 'roc_auc')
+            
+            elastic_params = grid_search(model = elastic_model, search = grid_elastic_search, 
+                          train = train_features, 
+                          CV = 3, score = 'roc_auc')
+            
+            if params[1] > elastic_params[1]:
+                params = params[0]
+                best_model = LogisticRegression(**params)
+            else:
+                params = elastic_params[0]
+                best_model = ElasticNet(**params)
+            
+        elif tune_by == 'bayes':
+            
+            bayes_mlp_search = [{
+                    'activation': Categorical(['logistic', 'relu']),
+                    'solver': Categorical(['adam','sgd']),
+                    'hidden_layer_sizes': Integer(1,1000), 
+                    'alpha': Real(0.0001, 0.3, prior = 'log-uniform'),
+                    'learning_rate': Categorical(['constant','adaptive','invscaling']),
+                    'max_iter': Integer(60,1000)
+                                       
+                    }]
+            
+            
+            params = bayes_CV(model = mlp, search = bayes_mlp_search, 
+                              train = train_features, 
+                              iterations = 50, CV = 3,
+                              score = 'roc_auc')
+            #pdb.set_trace()
+            params[0].update({'random_state': 0})
+            
+            best_model = MLPClassifier(**params[0])
+        else:
+            print('Need either bayes or grid as tune_by')
+        
+        
+        
+        best_model = best_model.fit(train_features, y_train)
+
+        best_model_predictions = best_model.predict(test_features)
+        
+        fpr, tpr, thresholds = metrics.roc_curve(y_test, best_model_predictions , pos_label = 1)
+        linear_score = format(metrics.auc(fpr, tpr))
+        linear_score = float(linear_score)*100
+        
+        print("\n")
+        print("Params : \n", params)
+        print("\n")
+        print("AUC : \n", linear_score,"%")
+        #print(" Completion Speed", round((time.time() - start_timenb),5))
+        print()
+        
+    else:
     
-    mlp = mlp.fit(train_features, [int(i) for i in y_train])
-    prediction4 = mlp.predict(test_features)
-    mmm, ppp, thresholds = metrics.roc_curve(y_test, prediction4, pos_label=1)
-    kn = format(metrics.auc(mmm, ppp))
-    kn = float(kn)*100
-    print("MLP AUC : \n", kn, "%")
-    #print(" Completion Speed", round((time.time() - start_timerf),5))
-    print()
-    print()
+        mlp = mlp.fit(train_features, [int(i) for i in y_train])
+        prediction4 = mlp.predict(test_features)
+        mmm, ppp, thresholds = metrics.roc_curve(y_test, prediction4, pos_label=1)
+        kn = format(metrics.auc(mmm, ppp))
+        kn = float(kn)*100
+        print("MLP AUC : \n", kn, "%")
+        #print(" Completion Speed", round((time.time() - start_timerf),5))
+        print()
+        print()
 
 logModTrain(vecType = 'BOW', tuning = False, tune_by = 'bayes')
 nbTrain(vecType = 'tfidf', tuning = False, tune_by = 'bayes')
 datree(vecType = 'tfidf')
-Tsvm(vecType = 'tfidf')
+Tsvm(vecType = 'BOW', tuning = True, tune_by = 'bayes')
 knN(vecType = 'tfidf')
 RanFo(vecType = 'BOW')
-mlp(vecType= 'BOW')
+mlp(vecType= 'BOW', tuning = True, tune_by = 'bayes')
